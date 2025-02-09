@@ -2,7 +2,7 @@ import torch
 from flwr.client import ClientApp, NumPyClient
 from flwr.common import Context
 
-from src.data_loader import dataset_length, load_client_data
+from src.data_loader import load_client_data
 from src.ml_models.net import Net, test, train
 from src.ml_models.utils import get_weights, set_weights
 from src.utils.logger import get_logger
@@ -16,8 +16,8 @@ class FlowerClient(NumPyClient):
         local_epochs,
         learning_rate,
         momentum,
-        unlearning_trigger_client,
-        unlearning_trigger_round,
+        num_batches_each_round,
+        batch_size,
     ):
         super().__init__()
         self.net = Net()
@@ -25,8 +25,8 @@ class FlowerClient(NumPyClient):
         self.local_epochs = local_epochs
         self.lr = learning_rate
         self.momentum = momentum
-        self.unlearning_trigger_client = unlearning_trigger_client
-        self.unlearning_trigger_round = unlearning_trigger_round
+        self.num_batches_each_round = num_batches_each_round
+        self.batch_size = batch_size
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         # Configure logging
@@ -46,18 +46,19 @@ class FlowerClient(NumPyClient):
         results = {}
 
         # Unlearning initiated by the client
-        if (
-            current_round == self.unlearning_trigger_round
-            and self.client_number == self.unlearning_trigger_client
-        ):
+        if current_round == -1 and self.client_number == -1:
             self.logger.info(
                 "Unlearning initiated by the client: %s", self.client_number
             )
             results = {"unlearn_client_number": self.client_number}
             unlearn_client_number = self.client_number
 
-        train_batches = load_client_data("train", self.client_number, current_round)
-        val_batches = load_client_data("val", self.client_number)
+        train_batches = load_client_data(
+            "train", self.client_number, self.num_batches_each_round, self.batch_size
+        )
+        val_batches = load_client_data(
+            "val", self.client_number, self.num_batches_each_round, self.batch_size
+        )
 
         set_weights(self.net, parameters)
 
@@ -76,21 +77,23 @@ class FlowerClient(NumPyClient):
 
         self.logger.info("sga: %s", sga)
         self.logger.info("results %s", results)
-        self.logger.info("dataset_length %s", dataset_length(train_batches))
+        self.logger.info("dataset_length %s", len(train_batches.dataset))
         self.logger.info("learning_rate: %s", self.lr)
         self.logger.info("momentum: %s", self.momentum)
 
         return (
             get_weights(self.net),
-            dataset_length(train_batches),
+            len(train_batches.dataset),
             results,
         )
 
-    def _evaluate_model(self, parameters, type):
+    def _evaluate_model(self, parameters):
         set_weights(self.net, parameters)
-        val_batches = load_client_data(type, self.client_number)
+        val_batches = load_client_data(
+            "val", self.client_number, self.num_batches_each_round, self.batch_size
+        )
         loss, accuracy = test(self.net, val_batches, self.device)
-        val_dataset_length = dataset_length(val_batches)
+        val_dataset_length = len(val_batches.dataset)
 
         self.logger.info("loss: %s", loss)
         self.logger.info("accuracy: %s", accuracy)
@@ -101,7 +104,7 @@ class FlowerClient(NumPyClient):
     def evaluate(self, parameters, config):
         self.logger.info("config: %s", config)
 
-        loss, accuracy, val_dataset_length = self._evaluate_model(parameters, "val")
+        loss, accuracy, val_dataset_length = self._evaluate_model(parameters)
 
         return (
             loss,
@@ -117,8 +120,8 @@ def client_fn(context: Context):
     local_epochs = context.run_config["local-epochs"]
     learning_rate = context.run_config["learning-rate"]
     momentum = context.run_config["momentum"]
-    unlearning_trigger_client = context.run_config["unlearning-trigger-client"]
-    unlearning_trigger_round = context.run_config["unlearning-trigger-round"]
+    num_batches_each_round = context.run_config["num-batches-each-round"]
+    batch_size = context.run_config["batch-size"]
 
     # Return Client instance
     return FlowerClient(
@@ -126,8 +129,8 @@ def client_fn(context: Context):
         local_epochs,
         learning_rate,
         momentum,
-        unlearning_trigger_client,
-        unlearning_trigger_round,
+        num_batches_each_round,
+        batch_size,
     ).to_client()
 
 

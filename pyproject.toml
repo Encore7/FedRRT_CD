@@ -19,8 +19,6 @@ serverapp = "src.server_app:app"
 clientapp = "src.client_app:app"
 
 [tool.flwr.app.config]
-unlearning-trigger-client = 0
-unlearning-trigger-round = 101
 num-of-clients = 10
 momentum = 0.9
 num-server-rounds = 20
@@ -30,7 +28,7 @@ local-epochs = 3
 learning-rate = 0.005
 batch-size = 128
 dataset-name = "mnist"
-data-loader-alpha = 0.5
+data-loader-alpha = 0.9
 prepare-dataset = true
 
 [tool.flwr.federations]

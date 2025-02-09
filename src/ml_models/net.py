@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.data_loader import dataset_length
-
 
 class Net(nn.Module):
     def __init__(self):
@@ -88,6 +86,6 @@ def test(net, test_batch, device):
             outputs = net(images)
             loss += criterion(outputs, labels).item()
             correct += (torch.max(outputs.data, 1)[1] == labels).sum().item()
-    accuracy = correct / dataset_length(test_batch)
-    loss = loss / dataset_length(test_batch)
+    accuracy = correct / len(test_batch.dataset)
+    loss = loss / len(test_batch.dataset)
     return loss, accuracy
