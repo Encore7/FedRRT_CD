@@ -17,6 +17,9 @@ def prepare_dataset(pyproject_path: str, clients_dataset_folder_path: str):
             .get("app", {})
             .get("config", {})
         )
+
+        clear_folder_contents(config.get("drift-dataset-folder-path", None))
+
         prepare_dataset = config.get("prepare-dataset", None)
 
         if not prepare_dataset:

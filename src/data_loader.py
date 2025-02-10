@@ -5,8 +5,32 @@ import torch
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import DirichletPartitioner
 from torch.utils.data import DataLoader as TorchDataLoader
-from torch.utils.data import Subset
+from torch.utils.data import Dataset, Subset
 from torchvision import transforms
+
+
+class LabelSwapDataset(Dataset):
+    def __init__(self, original_dataset, swap_mapping):
+        """
+        Wraps a dataset and swaps labels according to swap_mapping.
+
+        Args:
+            original_dataset (Dataset): The original dataset to wrap.
+            swap_mapping (dict): A dictionary mapping old labels to new labels.
+        """
+        self.dataset = original_dataset
+        self.swap_mapping = swap_mapping
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        # Get the original item (assumed to be a tuple (x, y))
+        x, y = self.dataset[index]
+        # Swap the label if it exists in the mapping
+        if y in self.swap_mapping:
+            y = self.swap_mapping[y]
+        return x, y
 
 
 class DataLoader:
@@ -90,17 +114,26 @@ class DataLoader:
 
 
 def load_client_data(
-    type: str, client_number: int, num_batches_each_round: int, batch_size: int
+    _type: str,
+    client_number: int,
+    num_batches_each_round: int,
+    batch_size: int,
+    current_round: int,
+    is_drift: bool = None,
+    abrupt_drift_labels_swap=None,
+    drift_dataset_folder_path: str = None,
 ):
     client_dir = os.path.join("src", "clients_dataset", f"client_{client_number}")
 
-    if type == "val":
+    if _type == "val":
         # Load validation dataset
-        path = os.path.join(client_dir, "val_data.pt")
+        file_name = "val_data"
 
-    elif type == "train":
+    elif _type == "train":
         # Load train dataset for the specified round
-        path = os.path.join(client_dir, "train_data.pt")
+        file_name = "train_data"
+
+    path = os.path.join(client_dir, f"{file_name}.pt")
 
     dataset = torch.load(path, weights_only=False)
     dataset_length = len(dataset)
@@ -113,8 +146,43 @@ def load_client_data(
 
     # Randomly select indices without replacement
     indices = np.random.choice(dataset_length, total_samples, replace=False)
-    subset = Subset(dataset, indices)
 
-    # Create a DataLoader over the subset
-    data_loader = TorchDataLoader(subset, batch_size=batch_size, shuffle=True)
+    if is_drift:
+        # Prepare a list to hold the swapped data samples
+        swapped_data = []
+        # Loop over each selected index and swap labels if needed
+        for idx in indices:
+            # Get the sample (assumed to be in the format (image, label))
+            image = dataset[int(idx)]["image"]
+            label = dataset[int(idx)]["label"]
+
+            # Check each swap rule
+            for rule in abrupt_drift_labels_swap:
+                if label == rule["from"]:
+                    label = rule["to"]
+                elif label == rule["to"]:
+                    label = rule["from"]
+            # Append the (possibly modified) sample to our swapped data list
+            swapped_data.append({"image": image, "label": label})
+
+        # Save the swapped dataset.
+        # For example, we append '_drift' to the filename.
+
+        if _type == "train":
+            drift_client_dir = os.path.join(
+                drift_dataset_folder_path, f"client_{client_number}"
+            )
+            os.makedirs(drift_client_dir, exist_ok=True)
+            drift_file_path = os.path.join(
+                drift_client_dir, f"{file_name}_drift_{current_round}.pt"
+            )
+            torch.save(swapped_data, drift_file_path)
+
+        # Create a new DataLoader using the swapped data
+        data_loader = TorchDataLoader(swapped_data, batch_size=batch_size, shuffle=True)
+    else:
+        subset = Subset(dataset, indices)
+        # Create a DataLoader over the subset
+        data_loader = TorchDataLoader(subset, batch_size=batch_size, shuffle=True)
+
     return data_loader

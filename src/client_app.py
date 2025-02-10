@@ -1,3 +1,5 @@
+import json
+
 import torch
 from flwr.client import ClientApp, NumPyClient
 from flwr.common import Context
@@ -18,6 +20,11 @@ class FlowerClient(NumPyClient):
         momentum,
         num_batches_each_round,
         batch_size,
+        drift_start_round,
+        drift_end_round,
+        drift_clients,
+        abrupt_drift_labels_swap,
+        drift_dataset_folder_path,
     ):
         super().__init__()
         self.net = Net()
@@ -27,6 +34,11 @@ class FlowerClient(NumPyClient):
         self.momentum = momentum
         self.num_batches_each_round = num_batches_each_round
         self.batch_size = batch_size
+        self.drift_start_round = drift_start_round
+        self.drift_end_round = drift_end_round
+        self.drift_clients = drift_clients
+        self.abrupt_drift_labels_swap = abrupt_drift_labels_swap
+        self.drift_dataset_folder_path = drift_dataset_folder_path
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         # Configure logging
@@ -36,9 +48,17 @@ class FlowerClient(NumPyClient):
 
     def fit(self, parameters, config):
         sga = False
+        is_drift = False
 
         # Fetching configuration settings from the server for the fit operation (server.configure_fit)
         current_round = config.get("current_round", 0)
+
+        if self.drift_start_round <= current_round < self.drift_end_round:
+            if self.client_number in self.drift_clients:
+                is_drift = True
+                self.logger.info(
+                    "Drift initiated by the client: %s", self.client_number
+                )
 
         self.logger.info("config: %s", config)
         self.logger.info("Client %s | Round %s", self.client_number, current_round)
@@ -54,10 +74,24 @@ class FlowerClient(NumPyClient):
             unlearn_client_number = self.client_number
 
         train_batches = load_client_data(
-            "train", self.client_number, self.num_batches_each_round, self.batch_size
+            "train",
+            self.client_number,
+            self.num_batches_each_round,
+            self.batch_size,
+            current_round,
+            is_drift,
+            self.abrupt_drift_labels_swap,
+            self.drift_dataset_folder_path,
         )
         val_batches = load_client_data(
-            "val", self.client_number, self.num_batches_each_round, self.batch_size
+            "val",
+            self.client_number,
+            self.num_batches_each_round,
+            self.batch_size,
+            current_round,
+            is_drift,
+            self.abrupt_drift_labels_swap,
+            self.drift_dataset_folder_path,
         )
 
         set_weights(self.net, parameters)
@@ -87,10 +121,16 @@ class FlowerClient(NumPyClient):
             results,
         )
 
-    def _evaluate_model(self, parameters):
+    def _evaluate_model(self, parameters, current_round, is_drift):
         set_weights(self.net, parameters)
         val_batches = load_client_data(
-            "val", self.client_number, self.num_batches_each_round, self.batch_size
+            "val",
+            self.client_number,
+            self.num_batches_each_round,
+            self.batch_size,
+            current_round,
+            is_drift,
+            self.abrupt_drift_labels_swap,
         )
         loss, accuracy = test(self.net, val_batches, self.device)
         val_dataset_length = len(val_batches.dataset)
@@ -102,9 +142,21 @@ class FlowerClient(NumPyClient):
         return loss, accuracy, val_dataset_length
 
     def evaluate(self, parameters, config):
+        is_drift = False
         self.logger.info("config: %s", config)
 
-        loss, accuracy, val_dataset_length = self._evaluate_model(parameters)
+        current_round = config.get("current_round", 0)
+
+        if self.drift_start_round <= current_round < self.drift_end_round:
+            if self.client_number in self.drift_clients:
+                is_drift = True
+                self.logger.info(
+                    "Drift initiated by the client: %s", self.client_number
+                )
+
+        loss, accuracy, val_dataset_length = self._evaluate_model(
+            parameters, current_round, is_drift
+        )
 
         return (
             loss,
@@ -122,6 +174,13 @@ def client_fn(context: Context):
     momentum = context.run_config["momentum"]
     num_batches_each_round = context.run_config["num-batches-each-round"]
     batch_size = context.run_config["batch-size"]
+    drift_start_round = context.run_config["drift-start-round"]
+    drift_end_round = context.run_config["drift-end-round"]
+    drift_clients = json.loads(context.run_config["drift-clients"])
+    abrupt_drift_labels_swap = json.loads(
+        context.run_config["abrupt-drift-labels-swap"]
+    )
+    drift_dataset_folder_path = context.run_config["drift-dataset-folder-path"]
 
     # Return Client instance
     return FlowerClient(
@@ -131,6 +190,11 @@ def client_fn(context: Context):
         momentum,
         num_batches_each_round,
         batch_size,
+        drift_start_round,
+        drift_end_round,
+        drift_clients,
+        abrupt_drift_labels_swap,
+        drift_dataset_folder_path,
     ).to_client()
 
 
