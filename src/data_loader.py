@@ -235,23 +235,19 @@ def add_client_drifted_dataset(
         ) as file:
             drift_dataset_indexes = set(json.load(file))
 
-        swapped_data = []
         # Loop over each selected index and swap labels if needed
-        for idx in drift_dataset_indexes:
+        for _, drift_dataset_index in drift_dataset_indexes:
             # Get the sample (assumed to be in the format (image, label))
-            image = client_dataset[int(idx)]["image"]
-            label = client_dataset[int(idx)]["label"]
+            label = client_dataset[int(drift_dataset_index)]["label"]
 
             # Check each swap rule
             for rule in abrupt_drift_labels_swap:
                 if label == rule["label1"]:
-                    swapped_data.append({"image": image, "label": rule["label2"]})
+                    client_dataset[int(drift_dataset_index)]["label"] = rule["label2"]
                 elif label == rule["label2"]:
-                    swapped_data.append({"image": image, "label": rule["label1"]})
-            # Append the (possibly modified) sample to our swapped data list
-            swapped_data.append({"image": image, "label": label})
+                    client_dataset[int(drift_dataset_index)]["label"] = rule["label1"]
 
         client_drifted_dataset_file_path = os.path.join(
             client_drifted_dataset_folder_path, f"{file_name_without_ext}.pt"
         )
-        torch.save(swapped_data, client_drifted_dataset_file_path)
+        torch.save(client_dataset, client_drifted_dataset_file_path)
