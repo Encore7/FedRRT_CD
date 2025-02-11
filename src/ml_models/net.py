@@ -46,15 +46,11 @@ class Net(nn.Module):
         return x
 
 
-def train(
-    net, train_batches, val_batches, epochs, learning_rate, device, momentum, SGA=False
-):
+def train(net, train_batches, val_batches, epochs, learning_rate, device, momentum):
     net.to(device)
     criterion = torch.nn.CrossEntropyLoss().to(device)
 
-    optimizer = torch.optim.SGD(
-        net.parameters(), lr=learning_rate, momentum=momentum, maximize=SGA
-    )
+    optimizer = torch.optim.SGD(net.parameters(), lr=learning_rate, momentum=momentum)
     net.train()
 
     for _ in range(epochs):
