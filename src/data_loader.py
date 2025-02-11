@@ -93,7 +93,7 @@ def load_client_data(
     num_batches_each_round: int,
     batch_size: int,
     client_dataset_folder_path: str,
-    save_swapped_labels: bool = True,
+    save_swapped_labels: bool,
     is_drift: bool = False,
     abrupt_drift_labels_swap=None,
     client_drift_dataset_indexes_folder_path: str = None,
