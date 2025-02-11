@@ -93,6 +93,7 @@ def load_client_data(
     num_batches_each_round: int,
     batch_size: int,
     client_dataset_folder_path: str,
+    save_swapped_labels: bool = True,
     is_drift: bool = False,
     abrupt_drift_labels_swap=None,
     client_drift_dataset_indexes_folder_path: str = None,
@@ -136,22 +137,23 @@ def load_client_data(
         # Save the swapped dataset.
         # For example, we append '_drift' to the filename.
 
-        os.makedirs(client_drift_dataset_indexes_folder_path, exist_ok=True)
-        client_drift_dataset_indexes_file_path = os.path.join(
-            client_drift_dataset_indexes_folder_path, f"{file_name}.json"
-        )
-        # Save the drift indexes to file
-        if os.path.exists(client_drift_dataset_indexes_file_path):
-            with open(
-                client_drift_dataset_indexes_file_path, "r", encoding="utf-8"
-            ) as file:
-                existing_indexes = json.load(file)
-            drift_dataset_indexes = existing_indexes + drift_dataset_indexes
+        if save_swapped_labels:
+            os.makedirs(client_drift_dataset_indexes_folder_path, exist_ok=True)
+            client_drift_dataset_indexes_file_path = os.path.join(
+                client_drift_dataset_indexes_folder_path, f"{file_name}.json"
+            )
+            # Save the drift indexes to file
+            if os.path.exists(client_drift_dataset_indexes_file_path):
+                with open(
+                    client_drift_dataset_indexes_file_path, "r", encoding="utf-8"
+                ) as file:
+                    existing_indexes = json.load(file)
+                drift_dataset_indexes = existing_indexes + drift_dataset_indexes
 
-        with open(
-            client_drift_dataset_indexes_file_path, "w", encoding="utf-8"
-        ) as file:
-            json.dump(drift_dataset_indexes, file)
+            with open(
+                client_drift_dataset_indexes_file_path, "w", encoding="utf-8"
+            ) as file:
+                json.dump(drift_dataset_indexes, file)
 
         # Create a new DataLoader using the swapped data
         data_loader = TorchDataLoader(swapped_data, batch_size=batch_size, shuffle=True)

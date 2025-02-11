@@ -182,6 +182,7 @@ class FlowerClient(NumPyClient):
             self.num_batches_each_round,
             self.batch_size,
             client_dataset_folder_path,
+            False,
             is_drift,
             self.abrupt_drift_labels_swap,
             self.client_drift_dataset_indexes_folder_path,
