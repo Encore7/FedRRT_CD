@@ -6,9 +6,9 @@ from src.data_loader import DataLoader
 from src.scripts.helper import clear_folder_contents
 
 
-def prepare_dataset(pyproject_path: str, clients_dataset_folder_path: str):
+def prepare_dataset(pyproject_path: str):
     if os.path.exists(pyproject_path):
-        with open(pyproject_path, "r") as file:
+        with open(pyproject_path, "r", encoding="utf-8") as file:
             pyproject_data = toml.load(file)
 
         config = (
@@ -18,23 +18,27 @@ def prepare_dataset(pyproject_path: str, clients_dataset_folder_path: str):
             .get("config", {})
         )
 
-        clear_folder_contents(config.get("drift-dataset-folder-path", None))
+        clear_folder_contents(config.get("drift-dataset-indexes-folder-path", None))
+        clear_folder_contents(config.get("remaining-dataset-folder-path", None))
+        clear_folder_contents(config.get("drifted-dataset-folder-path", None))
 
-        prepare_dataset = config.get("prepare-dataset", None)
+        should_prepare_dataset = config.get("prepare-dataset", None)
 
-        if not prepare_dataset:
+        if not should_prepare_dataset:
             return
 
         num_of_clients = config.get("num-of-clients", None)
         dataset_name = config.get("dataset-name", None)
         alpha = config.get("data-loader-alpha", None)
 
-        clear_folder_contents(clients_dataset_folder_path)
+        dataset_folder_path = config.get("dataset-folder-path", None)
+
+        clear_folder_contents(dataset_folder_path)
 
         dataloader = DataLoader(dataset_name=str(dataset_name))
 
         dataloader.save_datasets(
             num_clients=num_of_clients,
             alpha=alpha,
-            clients_dataset_folder_path=clients_dataset_folder_path,
+            dataset_folder_path=dataset_folder_path,
         )

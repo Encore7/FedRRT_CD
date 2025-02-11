@@ -7,7 +7,6 @@ from src.scripts.prepare_dataset import prepare_dataset
 def pre_flwr_run():
     print("Running pre-flwr setup...")
     logs_folder_path = "log"
-    clients_dataset_folder_path = "src/clients_dataset"
     pyproject_toml_file_path = "pyproject.toml"
 
     # clearing logs before running the experiment
@@ -15,7 +14,7 @@ def pre_flwr_run():
 
     # preparing the dataset
 
-    prepare_dataset(pyproject_toml_file_path, clients_dataset_folder_path)
+    prepare_dataset(pyproject_toml_file_path)
 
 
 if __name__ == "__main__":

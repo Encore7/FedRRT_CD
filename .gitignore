@@ -170,6 +170,4 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-clients_dataset/
-log/
-drift_dataset/
+data/

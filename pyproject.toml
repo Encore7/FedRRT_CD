@@ -30,14 +30,19 @@ batch-size = 128
 dataset-name = "mnist"
 data-loader-alpha = 0.9
 prepare-dataset = false
+dataset-folder-path = "src/data/clients_dataset"
 
 # Drift configuration
 drift-start-round = 10
 drift-end-round = 15
 drift-clients = "[1,5,7]"
-abrupt-drift-labels-swap = '[{"from": 1, "to": 2},{"from": 5, "to": 7}]'
-drift-dataset-folder-path = "src/drift_dataset"
+abrupt-drift-labels-swap = '[{"label1": 1, "label2": 2},{"label1": 5, "label2": 7}]'
+drift-dataset-indexes-folder-path = "src/data/clients_drift_dataset_indexes"
+remaining-dataset-folder-path = "src/data/clients_remaining_dataset"
+drifted-dataset-folder-path = "src/data/clients_drifted_dataset"
 
+# unlearning settings - drift-case, retraining-case, rapid-retraining-case
+mode = "retraining-case"
 
 [tool.flwr.federations]
 default = "local-simulation"

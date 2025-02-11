@@ -1,10 +1,16 @@
 import json
+import os
+from os import remove
 
 import torch
 from flwr.client import ClientApp, NumPyClient
 from flwr.common import Context
 
-from src.data_loader import load_client_data
+from src.data_loader import (
+    add_client_drifted_dataset,
+    load_client_data,
+    remove_client_drifted_dataset,
+)
 from src.ml_models.net import Net, test, train
 from src.ml_models.utils import get_weights, set_weights
 from src.utils.logger import get_logger
@@ -24,7 +30,11 @@ class FlowerClient(NumPyClient):
         drift_end_round,
         drift_clients,
         abrupt_drift_labels_swap,
-        drift_dataset_folder_path,
+        drift_dataset_indexes_folder_path,
+        remaining_dataset_folder_path,
+        drifted_dataset_folder_path,
+        dataset_folder_path,
+        mode,
     ):
         super().__init__()
         self.net = Net()
@@ -38,7 +48,19 @@ class FlowerClient(NumPyClient):
         self.drift_end_round = drift_end_round
         self.drift_clients = drift_clients
         self.abrupt_drift_labels_swap = abrupt_drift_labels_swap
-        self.drift_dataset_folder_path = drift_dataset_folder_path
+        self.client_drift_dataset_indexes_folder_path = os.path.join(
+            drift_dataset_indexes_folder_path, f"client_{client_number}"
+        )
+        self.client_remaining_dataset_folder_path = os.path.join(
+            remaining_dataset_folder_path, f"client_{client_number}"
+        )
+        self.client_drifted_dataset_folder_path = os.path.join(
+            drifted_dataset_folder_path, f"client_{client_number}"
+        )
+        self.client_dataset_folder_path = os.path.join(
+            dataset_folder_path, f"client_{client_number}"
+        )
+        self.mode = mode
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         # Configure logging
@@ -46,12 +68,9 @@ class FlowerClient(NumPyClient):
 
         self.logger.info("Client %s initiated", self.client_number)
 
-    def fit(self, parameters, config):
-        sga = False
+    def _get_dataset_folder_path(self, current_round):
         is_drift = False
-
-        # Fetching configuration settings from the server for the fit operation (server.configure_fit)
-        current_round = config.get("current_round", 0)
+        client_dataset_folder_path = self.client_dataset_folder_path
 
         if self.drift_start_round <= current_round < self.drift_end_round:
             if self.client_number in self.drift_clients:
@@ -59,6 +78,37 @@ class FlowerClient(NumPyClient):
                 self.logger.info(
                     "Drift initiated by the client: %s", self.client_number
                 )
+        elif (
+            current_round >= self.drift_end_round
+            and self.client_number in self.drift_clients
+        ):
+            if self.mode == "retraining-case":
+                remove_client_drifted_dataset(
+                    self.client_dataset_folder_path,
+                    self.client_drift_dataset_indexes_folder_path,
+                    self.client_remaining_dataset_folder_path,
+                )
+                client_dataset_folder_path = self.client_remaining_dataset_folder_path
+            elif self.mode == "drift-case":
+                add_client_drifted_dataset(
+                    self.client_dataset_folder_path,
+                    self.client_drift_dataset_indexes_folder_path,
+                    self.client_drifted_dataset_folder_path,
+                    self.abrupt_drift_labels_swap,
+                )
+                client_dataset_folder_path = self.client_drifted_dataset_folder_path
+
+        return client_dataset_folder_path, is_drift
+
+    def fit(self, parameters, config):
+        sga = False
+
+        # Fetching configuration settings from the server for the fit operation (server.configure_fit)
+        current_round = config.get("current_round", 0)
+
+        client_dataset_folder_path, is_drift = self._get_dataset_folder_path(
+            current_round
+        )
 
         self.logger.info("config: %s", config)
         self.logger.info("Client %s | Round %s", self.client_number, current_round)
@@ -66,32 +116,30 @@ class FlowerClient(NumPyClient):
         results = {}
 
         # Unlearning initiated by the client
-        if current_round == -1 and self.client_number == -1:
-            self.logger.info(
-                "Unlearning initiated by the client: %s", self.client_number
-            )
-            results = {"unlearn_client_number": self.client_number}
-            unlearn_client_number = self.client_number
+        # if current_round == -1 and self.client_number == -1:
+        #     self.logger.info(
+        #         "Unlearning initiated by the client: %s", self.client_number
+        #     )
+        #     results = {"unlearn_client_number": self.client_number}
+        #     unlearn_client_number = self.client_number
 
         train_batches = load_client_data(
-            "train",
-            self.client_number,
+            "train_data",
             self.num_batches_each_round,
             self.batch_size,
-            current_round,
+            client_dataset_folder_path,
             is_drift,
             self.abrupt_drift_labels_swap,
-            self.drift_dataset_folder_path,
+            self.client_drift_dataset_indexes_folder_path,
         )
         val_batches = load_client_data(
-            "val",
-            self.client_number,
+            "val_data",
             self.num_batches_each_round,
             self.batch_size,
-            current_round,
+            client_dataset_folder_path,
             is_drift,
             self.abrupt_drift_labels_swap,
-            self.drift_dataset_folder_path,
+            self.client_drift_dataset_indexes_folder_path,
         )
 
         set_weights(self.net, parameters)
@@ -121,16 +169,17 @@ class FlowerClient(NumPyClient):
             results,
         )
 
-    def _evaluate_model(self, parameters, current_round, is_drift):
+    def _evaluate_model(self, parameters, is_drift, client_dataset_folder_path):
         set_weights(self.net, parameters)
+
         val_batches = load_client_data(
-            "val",
-            self.client_number,
+            "val_data",
             self.num_batches_each_round,
             self.batch_size,
-            current_round,
+            client_dataset_folder_path,
             is_drift,
             self.abrupt_drift_labels_swap,
+            self.client_drift_dataset_indexes_folder_path,
         )
         loss, accuracy = test(self.net, val_batches, self.device)
         val_dataset_length = len(val_batches.dataset)
@@ -147,15 +196,14 @@ class FlowerClient(NumPyClient):
 
         current_round = config.get("current_round", 0)
 
-        if self.drift_start_round <= current_round < self.drift_end_round:
-            if self.client_number in self.drift_clients:
-                is_drift = True
-                self.logger.info(
-                    "Drift initiated by the client: %s", self.client_number
-                )
+        client_dataset_folder_path, is_drift = self._get_dataset_folder_path(
+            current_round
+        )
 
         loss, accuracy, val_dataset_length = self._evaluate_model(
-            parameters, current_round, is_drift
+            parameters,
+            is_drift,
+            client_dataset_folder_path,
         )
 
         return (
@@ -180,7 +228,13 @@ def client_fn(context: Context):
     abrupt_drift_labels_swap = json.loads(
         context.run_config["abrupt-drift-labels-swap"]
     )
-    drift_dataset_folder_path = context.run_config["drift-dataset-folder-path"]
+    drift_dataset_indexes_folder_path = context.run_config[
+        "drift-dataset-indexes-folder-path"
+    ]
+    remaining_dataset_folder_path = context.run_config["remaining-dataset-folder-path"]
+    drifted_dataset_folder_path = context.run_config["drifted-dataset-folder-path"]
+    dataset_folder_path = context.run_config["dataset-folder-path"]
+    mode = context.run_config["mode"]
 
     # Return Client instance
     return FlowerClient(
@@ -194,7 +248,11 @@ def client_fn(context: Context):
         drift_end_round,
         drift_clients,
         abrupt_drift_labels_swap,
-        drift_dataset_folder_path,
+        drift_dataset_indexes_folder_path,
+        remaining_dataset_folder_path,
+        drifted_dataset_folder_path,
+        dataset_folder_path,
+        mode,
     ).to_client()
 
 

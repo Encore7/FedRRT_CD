@@ -1,3 +1,4 @@
+import json
 import os
 
 import numpy as np
@@ -7,30 +8,6 @@ from flwr_datasets.partitioner import DirichletPartitioner
 from torch.utils.data import DataLoader as TorchDataLoader
 from torch.utils.data import Dataset, Subset
 from torchvision import transforms
-
-
-class LabelSwapDataset(Dataset):
-    def __init__(self, original_dataset, swap_mapping):
-        """
-        Wraps a dataset and swaps labels according to swap_mapping.
-
-        Args:
-            original_dataset (Dataset): The original dataset to wrap.
-            swap_mapping (dict): A dictionary mapping old labels to new labels.
-        """
-        self.dataset = original_dataset
-        self.swap_mapping = swap_mapping
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, index):
-        # Get the original item (assumed to be a tuple (x, y))
-        x, y = self.dataset[index]
-        # Swap the label if it exists in the mapping
-        if y in self.swap_mapping:
-            y = self.swap_mapping[y]
-        return x, y
 
 
 class DataLoader:
@@ -82,7 +59,7 @@ class DataLoader:
         self,
         num_clients: int,
         alpha: float,
-        clients_dataset_folder_path: str,
+        dataset_folder_path: str,
     ):
         # Create federated datasets for both train and test splits.
         federated_train_dataset = self._load_partition(
@@ -91,9 +68,7 @@ class DataLoader:
         federated_test_dataset = self._load_partition(num_clients, alpha, split="test")
 
         for client_id in range(num_clients):
-            client_dir = os.path.join(
-                clients_dataset_folder_path, f"client_{client_id}"
-            )
+            client_dir = os.path.join(dataset_folder_path, f"client_{client_id}")
             os.makedirs(client_dir, exist_ok=True)
 
             # Load each client's partition and apply the same transform.
@@ -114,28 +89,18 @@ class DataLoader:
 
 
 def load_client_data(
-    _type: str,
-    client_number: int,
+    file_name: str,
     num_batches_each_round: int,
     batch_size: int,
-    current_round: int,
-    is_drift: bool = None,
+    client_dataset_folder_path: str,
+    is_drift: bool = False,
     abrupt_drift_labels_swap=None,
-    drift_dataset_folder_path: str = None,
+    client_drift_dataset_indexes_folder_path: str = None,
 ):
-    client_dir = os.path.join("src", "clients_dataset", f"client_{client_number}")
 
-    if _type == "val":
-        # Load validation dataset
-        file_name = "val_data"
+    client_data_file_path = os.path.join(client_dataset_folder_path, f"{file_name}.pt")
 
-    elif _type == "train":
-        # Load train dataset for the specified round
-        file_name = "train_data"
-
-    path = os.path.join(client_dir, f"{file_name}.pt")
-
-    dataset = torch.load(path, weights_only=False)
+    dataset = torch.load(client_data_file_path, weights_only=False)
     dataset_length = len(dataset)
     total_samples = num_batches_each_round * batch_size
 
@@ -146,6 +111,7 @@ def load_client_data(
 
     # Randomly select indices without replacement
     indices = np.random.choice(dataset_length, total_samples, replace=False)
+    drift_dataset_indexes = []
 
     if is_drift:
         # Prepare a list to hold the swapped data samples
@@ -158,25 +124,34 @@ def load_client_data(
 
             # Check each swap rule
             for rule in abrupt_drift_labels_swap:
-                if label == rule["from"]:
-                    label = rule["to"]
-                elif label == rule["to"]:
-                    label = rule["from"]
+                if label == rule["label1"]:
+                    label = rule["label2"]
+                    drift_dataset_indexes.append(int(idx))
+                elif label == rule["label2"]:
+                    label = rule["label1"]
+                    drift_dataset_indexes.append(int(idx))
             # Append the (possibly modified) sample to our swapped data list
             swapped_data.append({"image": image, "label": label})
 
         # Save the swapped dataset.
         # For example, we append '_drift' to the filename.
 
-        if _type == "train":
-            drift_client_dir = os.path.join(
-                drift_dataset_folder_path, f"client_{client_number}"
-            )
-            os.makedirs(drift_client_dir, exist_ok=True)
-            drift_file_path = os.path.join(
-                drift_client_dir, f"{file_name}_drift_{current_round}.pt"
-            )
-            torch.save(swapped_data, drift_file_path)
+        os.makedirs(client_drift_dataset_indexes_folder_path, exist_ok=True)
+        client_drift_dataset_indexes_file_path = os.path.join(
+            client_drift_dataset_indexes_folder_path, f"{file_name}.json"
+        )
+        # Save the drift indexes to file
+        if os.path.exists(client_drift_dataset_indexes_file_path):
+            with open(
+                client_drift_dataset_indexes_file_path, "r", encoding="utf-8"
+            ) as file:
+                existing_indexes = json.load(file)
+            drift_dataset_indexes = existing_indexes + drift_dataset_indexes
+
+        with open(
+            client_drift_dataset_indexes_file_path, "w", encoding="utf-8"
+        ) as file:
+            json.dump(drift_dataset_indexes, file)
 
         # Create a new DataLoader using the swapped data
         data_loader = TorchDataLoader(swapped_data, batch_size=batch_size, shuffle=True)
@@ -186,3 +161,97 @@ def load_client_data(
         data_loader = TorchDataLoader(subset, batch_size=batch_size, shuffle=True)
 
     return data_loader
+
+
+def remove_client_drifted_dataset(
+    client_dataset_folder_path,
+    client_drift_dataset_indexes_folder_path,
+    client_remaining_dataset_folder_path,
+):
+    os.makedirs(client_remaining_dataset_folder_path, exist_ok=True)
+
+    for file_name in os.listdir(client_drift_dataset_indexes_folder_path):
+        file_name_without_ext = os.path.splitext(file_name)[0]
+
+        client_remaining_dataset_file_path = os.path.join(
+            client_remaining_dataset_folder_path, f"{file_name_without_ext}.pt"
+        )
+        # Load client dataset
+        client_data_file_path = os.path.join(
+            client_dataset_folder_path, f"{file_name_without_ext}.pt"
+        )
+
+        client_dataset = torch.load(client_data_file_path, weights_only=False)
+
+        if file_name_without_ext == "train_data":
+
+            client_drift_dataset_indexes_file_path = os.path.join(
+                client_drift_dataset_indexes_folder_path,
+                f"{file_name_without_ext}.json",
+            )
+
+            with open(
+                client_drift_dataset_indexes_file_path, "r", encoding="utf-8"
+            ) as file:
+                drift_dataset_indexes = set(json.load(file))
+
+            # Filter out the drifted dataset indices
+            remaining_dataset = [
+                data
+                for idx, data in enumerate(client_dataset)
+                if idx not in drift_dataset_indexes
+            ]
+
+            # Save the remaining dataset
+            torch.save(remaining_dataset, client_remaining_dataset_file_path)
+        else:
+            torch.save(client_dataset, client_remaining_dataset_file_path)
+
+
+def add_client_drifted_dataset(
+    client_dataset_folder_path,
+    client_drift_dataset_indexes_folder_path,
+    client_drifted_dataset_folder_path,
+    abrupt_drift_labels_swap,
+):
+    os.makedirs(client_drifted_dataset_folder_path, exist_ok=True)
+
+    for file_name in os.listdir(client_drift_dataset_indexes_folder_path):
+
+        file_name_without_ext = os.path.splitext(file_name)[0]
+
+        client_data_file_path = os.path.join(
+            client_dataset_folder_path, f"{file_name_without_ext}.pt"
+        )
+
+        client_dataset = torch.load(client_data_file_path, weights_only=False)
+
+        client_drift_dataset_indexes_file_path = os.path.join(
+            client_drift_dataset_indexes_folder_path, f"{file_name_without_ext}.json"
+        )
+
+        with open(
+            client_drift_dataset_indexes_file_path, "r", encoding="utf-8"
+        ) as file:
+            drift_dataset_indexes = set(json.load(file))
+
+        swapped_data = []
+        # Loop over each selected index and swap labels if needed
+        for idx in drift_dataset_indexes:
+            # Get the sample (assumed to be in the format (image, label))
+            image = client_dataset[int(idx)]["image"]
+            label = client_dataset[int(idx)]["label"]
+
+            # Check each swap rule
+            for rule in abrupt_drift_labels_swap:
+                if label == rule["label1"]:
+                    swapped_data.append({"image": image, "label": rule["label2"]})
+                elif label == rule["label2"]:
+                    swapped_data.append({"image": image, "label": rule["label1"]})
+            # Append the (possibly modified) sample to our swapped data list
+            swapped_data.append({"image": image, "label": label})
+
+        client_drifted_dataset_file_path = os.path.join(
+            client_drifted_dataset_folder_path, f"{file_name_without_ext}.pt"
+        )
+        torch.save(swapped_data, client_drifted_dataset_file_path)
