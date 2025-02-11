@@ -224,7 +224,7 @@ def add_client_drifted_dataset(
             client_dataset_folder_path, f"{file_name_without_ext}.pt"
         )
 
-        client_dataset = torch.load(client_data_file_path, weights_only=False)
+        client_dataset = list(torch.load(client_data_file_path, weights_only=False))
 
         client_drift_dataset_indexes_file_path = os.path.join(
             client_drift_dataset_indexes_folder_path, f"{file_name_without_ext}.json"
