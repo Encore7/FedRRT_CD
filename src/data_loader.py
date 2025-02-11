@@ -236,7 +236,7 @@ def add_client_drifted_dataset(
             drift_dataset_indexes = set(json.load(file))
 
         # Loop over each selected index and swap labels if needed
-        for _, drift_dataset_index in drift_dataset_indexes:
+        for drift_dataset_index in drift_dataset_indexes:
             # Get the sample (assumed to be in the format (image, label))
             label = client_dataset[int(drift_dataset_index)]["label"]
 

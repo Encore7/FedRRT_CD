@@ -79,7 +79,7 @@ class FlowerClient(NumPyClient):
                     "Drift initiated by the client: %s", self.client_number
                 )
         elif (
-            current_round >= self.drift_end_round
+            current_round == self.drift_end_round
             and self.client_number in self.drift_clients
         ):
             if self.mode == "retraining-case":
@@ -98,11 +98,18 @@ class FlowerClient(NumPyClient):
                 )
                 client_dataset_folder_path = self.client_drifted_dataset_folder_path
 
+        elif (
+            current_round > self.drift_end_round
+            and self.client_number in self.drift_clients
+        ):
+            if self.mode == "retraining-case":
+                client_dataset_folder_path = self.client_remaining_dataset_folder_path
+            elif self.mode == "drift-case":
+                client_dataset_folder_path = self.client_drifted_dataset_folder_path
+
         return client_dataset_folder_path, is_drift
 
     def fit(self, parameters, config):
-        sga = False
-
         # Fetching configuration settings from the server for the fit operation (server.configure_fit)
         current_round = config.get("current_round", 0)
 
@@ -152,12 +159,10 @@ class FlowerClient(NumPyClient):
             self.lr,
             self.device,
             self.momentum,
-            sga,
         )
 
         results.update(train_results)
 
-        self.logger.info("sga: %s", sga)
         self.logger.info("results %s", results)
         self.logger.info("dataset_length %s", len(train_batches.dataset))
         self.logger.info("learning_rate: %s", self.lr)
