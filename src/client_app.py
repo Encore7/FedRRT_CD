@@ -11,7 +11,7 @@ from src.data_loader import (
     load_client_data,
     remove_client_drifted_dataset,
 )
-from src.ml_models.net import Net, test, train
+from src.ml_models.net import Net, rapid_train, test, train
 from src.ml_models.utils import get_weights, set_weights
 from src.utils.logger import get_logger
 
@@ -80,7 +80,7 @@ class FlowerClient(NumPyClient):
             current_round == self.drift_end_round
             and self.client_number in self.drift_clients
         ):
-            if self.mode == "retraining-case":
+            if self.mode == "retraining-case" or self.mode == "rapid-retraining-case":
                 remove_client_drifted_dataset(
                     self.client_dataset_folder_path,
                     self.client_drift_dataset_indexes_folder_path,
@@ -100,7 +100,7 @@ class FlowerClient(NumPyClient):
             current_round > self.drift_end_round
             and self.client_number in self.drift_clients
         ):
-            if self.mode == "retraining-case":
+            if self.mode == "retraining-case" or self.mode == "rapid-retraining-case":
                 client_dataset_folder_path = self.client_remaining_dataset_folder_path
             elif self.mode == "drift-case":
                 client_dataset_folder_path = self.client_drifted_dataset_folder_path
@@ -119,14 +119,6 @@ class FlowerClient(NumPyClient):
         self.logger.info("Client %s | Round %s", self.client_number, current_round)
 
         results = {}
-
-        # Unlearning initiated by the client
-        # if current_round == -1 and self.client_number == -1:
-        #     self.logger.info(
-        #         "Unlearning initiated by the client: %s", self.client_number
-        #     )
-        #     results = {"unlearn_client_number": self.client_number}
-        #     unlearn_client_number = self.client_number
 
         train_batches = load_client_data(
             "train_data",
@@ -151,14 +143,28 @@ class FlowerClient(NumPyClient):
 
         set_weights(self.net, parameters)
 
-        train_results = train(
-            self.net,
-            train_batches,
-            val_batches,
-            self.local_epochs,
-            self.lr,
-            self.device,
-        )
+        if (
+            self.mode == "rapid-retraining-case"
+            and current_round >= self.drift_end_round
+        ):
+            train_results = rapid_train(
+                self.net,
+                train_batches,
+                val_batches,
+                self.local_epochs,
+                self.lr,
+                self.device,
+                self.batch_size,
+            )
+        else:
+            train_results = train(
+                self.net,
+                train_batches,
+                val_batches,
+                self.local_epochs,
+                self.lr,
+                self.device,
+            )
 
         results.update(train_results)
 

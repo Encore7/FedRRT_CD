@@ -28,8 +28,6 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 class UnlearningFedAvg(FedAvg):
     def __init__(self, num_of_clients, **kwargs):
         super().__init__(**kwargs)
-        self.unlearn_client_number = -1
-        self.unlearn_client_id = -1
 
         self.num_of_clients = num_of_clients
 
@@ -39,7 +37,6 @@ class UnlearningFedAvg(FedAvg):
 
         config = {
             "current_round": server_round,
-            "unlearn_client_number": self.unlearn_client_number,
         }
         print("fit_ins.config", config)
 
@@ -70,7 +67,6 @@ class UnlearningFedAvg(FedAvg):
         for _, evaluate_ins in client_evaluate_pairs:
             # Add the current round to the config
             evaluate_ins.config["current_round"] = server_round
-            evaluate_ins.config["unlearn_client_number"] = self.unlearn_client_number
 
         return client_evaluate_pairs
 

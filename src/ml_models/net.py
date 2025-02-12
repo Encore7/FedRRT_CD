@@ -70,6 +70,68 @@ def train(net, train_batches, val_batches, epochs, learning_rate, device):
     return results
 
 
+def get_weighed_sum(current_grad, all_gradients, beta, t, param, power=1):
+    weighed_sum = 0
+    for i in range(t):
+        if t == i + 1:
+            weighed_sum += (beta ** (t - (i + 1))) * (current_grad**power)
+        else:
+            weighed_sum += (beta ** (t - (i + 1))) * (all_gradients[i][param] ** power)
+
+    return weighed_sum
+
+
+def rapid_train(
+    net, train_batches, val_batches, epochs, learning_rate, device, batch_size
+):
+    beta1 = 0.9
+    beta2 = 0.999
+    epsilon = 1e-6
+
+    net.to(device)
+    criterion = torch.nn.CrossEntropyLoss().to(device)
+
+    optimizer = torch.optim.SGD(net.parameters(), lr=learning_rate)
+    net.train()
+
+    for _ in range(epochs):
+        all_gradients = []
+        for batch_idx, batch in enumerate(train_batches):
+            t = batch_idx + 1
+            batch_gradients = {}
+            images = batch["image"]
+            labels = batch["label"]
+            optimizer.zero_grad()
+            criterion(net(images.to(device)), labels.to(device)).backward()
+
+            # Square all gradients before optimizer.step()
+            for param in net.parameters():
+                if param.grad is not None:
+                    batch_gradients[param] = param.grad.clone().detach()
+
+                    weighed_sum_beta1 = get_weighed_sum(
+                        param.grad, all_gradients, beta1, t, param
+                    )
+                    weighed_sum_beta2 = get_weighed_sum(
+                        param.grad, all_gradients, beta1, t, param, 4
+                    )
+
+                    m_t = ((1 - beta1) * weighed_sum_beta1) / (1 - beta1**t)
+                    v_t = torch.sqrt(((1 - beta2) * weighed_sum_beta2) / (1 - beta2**t))
+
+                    param.data -= ((m_t) / (v_t + epsilon)) / batch_size
+
+            all_gradients.append(batch_gradients)
+
+    val_loss, val_acc = test(net, val_batches, device)
+
+    results = {
+        "val_loss": val_loss,
+        "val_accuracy": val_acc,
+    }
+    return results
+
+
 def test(net, test_batch, device):
     """Validate the model on the test set."""
     net.to(device)  # move model to GPU if available
