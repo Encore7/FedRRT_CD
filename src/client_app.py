@@ -23,7 +23,6 @@ class FlowerClient(NumPyClient):
         client_number,
         local_epochs,
         learning_rate,
-        momentum,
         num_batches_each_round,
         batch_size,
         drift_start_round,
@@ -41,7 +40,6 @@ class FlowerClient(NumPyClient):
         self.client_number = client_number
         self.local_epochs = local_epochs
         self.lr = learning_rate
-        self.momentum = momentum
         self.num_batches_each_round = num_batches_each_round
         self.batch_size = batch_size
         self.drift_start_round = drift_start_round
@@ -160,7 +158,6 @@ class FlowerClient(NumPyClient):
             self.local_epochs,
             self.lr,
             self.device,
-            self.momentum,
         )
 
         results.update(train_results)
@@ -168,7 +165,6 @@ class FlowerClient(NumPyClient):
         self.logger.info("results %s", results)
         self.logger.info("dataset_length %s", len(train_batches.dataset))
         self.logger.info("learning_rate: %s", self.lr)
-        self.logger.info("momentum: %s", self.momentum)
 
         return (
             get_weights(self.net),
@@ -227,7 +223,6 @@ def client_fn(context: Context):
     partition_id = context.node_config["partition-id"]
     local_epochs = context.run_config["local-epochs"]
     learning_rate = context.run_config["learning-rate"]
-    momentum = context.run_config["momentum"]
     num_batches_each_round = context.run_config["num-batches-each-round"]
     batch_size = context.run_config["batch-size"]
     drift_start_round = context.run_config["drift-start-round"]
@@ -249,7 +244,6 @@ def client_fn(context: Context):
         partition_id,
         local_epochs,
         learning_rate,
-        momentum,
         num_batches_each_round,
         batch_size,
         drift_start_round,
