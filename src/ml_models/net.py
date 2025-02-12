@@ -86,7 +86,7 @@ def rapid_train(
 ):
     beta1 = 0.9
     beta2 = 0.999
-    epsilon = 1e-6
+    epsilon = 0.005
 
     net.to(device)
     criterion = torch.nn.CrossEntropyLoss().to(device)

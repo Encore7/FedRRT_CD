@@ -1,22 +1,11 @@
 import os
 
-import toml
-
 from src.data_loader import DataLoader
 from src.scripts.helper import clear_folder_contents
 
 
-def prepare_dataset(pyproject_path: str):
+def prepare_dataset(pyproject_path: str, config: dict):
     if os.path.exists(pyproject_path):
-        with open(pyproject_path, "r", encoding="utf-8") as file:
-            pyproject_data = toml.load(file)
-
-        config = (
-            pyproject_data.get("tool", {})
-            .get("flwr", {})
-            .get("app", {})
-            .get("config", {})
-        )
 
         clear_folder_contents(config.get("drift-dataset-indexes-folder-path", None))
         clear_folder_contents(config.get("remaining-dataset-folder-path", None))

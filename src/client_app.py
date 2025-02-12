@@ -1,6 +1,5 @@
 import json
 import os
-from os import remove
 
 import torch
 from flwr.client import ClientApp, NumPyClient
@@ -219,7 +218,10 @@ class FlowerClient(NumPyClient):
         return (
             loss,
             val_dataset_length,
-            {"accuracy": accuracy},
+            {
+                "accuracy": accuracy,
+                "client_number": self.client_number,
+            },
         )
 
 

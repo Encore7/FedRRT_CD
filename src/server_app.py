@@ -1,15 +1,8 @@
-from functools import reduce
+import json
+import os
 from typing import List, Tuple
 
-import numpy as np
-from flwr.common import (
-    Context,
-    FitIns,
-    Metrics,
-    NDArrays,
-    ndarrays_to_parameters,
-    parameters_to_ndarrays,
-)
+from flwr.common import Context, FitIns, Metrics, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from flwr.server.strategy.aggregate import aggregate_inplace
@@ -26,10 +19,13 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 
 class UnlearningFedAvg(FedAvg):
-    def __init__(self, num_of_clients, **kwargs):
+    def __init__(self, num_of_clients, num_server_rounds, mode, **kwargs):
         super().__init__(**kwargs)
 
         self.num_of_clients = num_of_clients
+        self.client_plot = {}
+        self.num_server_rounds = num_server_rounds
+        self.mode = mode
 
     def configure_fit(self, server_round, parameters, client_manager):
         # Waiting till all clients are connected
@@ -93,6 +89,25 @@ class UnlearningFedAvg(FedAvg):
         return parameters_aggregated, metrics_aggregated
 
     def aggregate_evaluate(self, server_round, results, failures):
+        for _, eval_res in results:
+            client_number = eval_res.metrics["client_number"]
+            accuracy = eval_res.metrics["accuracy"]
+            loss = eval_res.loss
+
+            if client_number not in self.client_plot:
+                self.client_plot[client_number] = {"accuracy": [], "loss": []}
+
+            # Append accuracy and loss
+            self.client_plot[client_number]["accuracy"].append(accuracy)
+            self.client_plot[client_number]["loss"].append(loss)
+
+        if server_round == self.num_server_rounds:
+            with open(
+                os.path.join("src/plots", f"results_{self.mode}.json"),
+                "w",
+                encoding="utf-8",
+            ) as file:
+                json.dump(self.client_plot, file)
 
         return super().aggregate_evaluate(server_round, results, failures)
 
@@ -109,6 +124,8 @@ def server_fn(context: Context):
         evaluate_metrics_aggregation_fn=weighted_average,
         initial_parameters=parameters,
         num_of_clients=int(context.run_config["num-of-clients"]),
+        num_server_rounds=int(context.run_config["num-server-rounds"]),
+        mode=context.run_config["mode"],
     )
     config = ServerConfig(num_rounds=int(context.run_config["num-server-rounds"]))
 
