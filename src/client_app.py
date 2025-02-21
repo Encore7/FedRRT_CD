@@ -1,7 +1,9 @@
 import json
 import os
 
+import numpy as np
 import torch
+import torch.nn as nn
 from flwr.client import ClientApp, NumPyClient
 from flwr.common import Context
 
@@ -79,7 +81,11 @@ class FlowerClient(NumPyClient):
             current_round == self.drift_end_round
             and self.client_number in self.drift_clients
         ):
-            if self.mode == "retraining-case" or self.mode == "rapid-retraining-case":
+            if (
+                self.mode == "retraining-case"
+                or self.mode == "rapid-retraining-case"
+                or self.mode == "fedau-case"
+            ):
                 remove_client_drifted_dataset(
                     self.client_dataset_folder_path,
                     self.client_drift_dataset_indexes_folder_path,
@@ -99,7 +105,11 @@ class FlowerClient(NumPyClient):
             current_round > self.drift_end_round
             and self.client_number in self.drift_clients
         ):
-            if self.mode == "retraining-case" or self.mode == "rapid-retraining-case":
+            if (
+                self.mode == "retraining-case"
+                or self.mode == "rapid-retraining-case"
+                or self.mode == "fedau-case"
+            ):
                 client_dataset_folder_path = self.client_remaining_dataset_folder_path
             elif self.mode == "drift-case":
                 client_dataset_folder_path = self.client_drifted_dataset_folder_path
@@ -170,6 +180,62 @@ class FlowerClient(NumPyClient):
         self.logger.info("results %s", results)
         self.logger.info("dataset_length %s", len(train_batches.dataset))
         self.logger.info("learning_rate: %s", self.lr)
+
+        # Training aux model for the federated AU case
+
+        if (
+            self.mode == "fedau-case"
+            and self.client_number in self.drift_clients
+            and (self.drift_start_round <= current_round < self.drift_end_round)
+        ):
+            aux_model = Net()
+            set_weights(aux_model, parameters)
+
+            aux_model.fc3 = nn.Linear(
+                aux_model.fc3.in_features, aux_model.fc3.out_features
+            )
+
+            aux_train_batches = load_client_data(
+                "train_data",
+                self.num_batches_each_round,
+                self.batch_size,
+                client_dataset_folder_path,
+                False,
+                False,
+                self.abrupt_drift_labels_swap,
+                self.client_drift_dataset_indexes_folder_path,
+                self.mode,
+            )
+
+            train(
+                aux_model,
+                aux_train_batches,
+                val_batches,
+                self.local_epochs,
+                self.lr,
+                self.device,
+            )
+
+            aux_last_layer_index = []
+            aux_last_layer_array = [
+                val.cpu().numpy()
+                for idx, (name, val) in enumerate(aux_model.state_dict().items())
+                if "fc3" in name and aux_last_layer_index.append(idx) is None
+            ]
+
+            results.update(
+                {"mode": self.mode, "aux_last_layer_index": aux_last_layer_index}
+            )
+
+            weights = get_weights(self.net)
+            weights.append(aux_last_layer_array[0])
+            weights.append(aux_last_layer_array[1])
+
+            return (
+                weights,
+                len(train_batches.dataset),
+                results,
+            )
 
         return (
             get_weights(self.net),

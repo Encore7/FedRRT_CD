@@ -1,8 +1,18 @@
 import json
 import os
+import time
+from functools import reduce
 from typing import List, Tuple
 
-from flwr.common import Context, FitIns, Metrics, ndarrays_to_parameters
+import numpy as np
+from flwr.common import (
+    Context,
+    FitIns,
+    Metrics,
+    NDArrays,
+    ndarrays_to_parameters,
+    parameters_to_ndarrays,
+)
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from flwr.server.strategy.aggregate import aggregate_inplace
@@ -16,6 +26,31 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
     examples = [num_examples for num_examples, _ in metrics]
     return {"accuracy": sum(accuracies) / sum(examples)}
+
+
+def custom_aggregate(results: list[tuple[NDArrays, float]]) -> NDArrays:
+    """
+    Aggregate model parameters with custom weightages.
+    Parameters:
+    results: List of tuples, where each tuple contains:
+        - NDArrays: Model parameters
+        - float: Weightage for this model (e.g., 0.1 for 10%, 0.9 for 90%)
+    Returns:
+    NDArrays: Aggregated model parameters.
+    """
+    # Ensure weightages sum up to 1 for valid aggregation
+    total_weight = sum(weight for _, weight in results)
+    if not np.isclose(total_weight, 1.0):
+        raise ValueError("Weightages must sum up to 1.0")
+    # Multiply model weights by their respective weightage
+    weighted_weights = [
+        [layer * weight for layer in weights] for weights, weight in results
+    ]
+    # Sum up the weighted layers across models
+    aggregated_weights: NDArrays = [
+        reduce(np.add, layer_updates) for layer_updates in zip(*weighted_weights)
+    ]
+    return aggregated_weights
 
 
 class UnlearningFedAvg(FedAvg):
@@ -74,14 +109,60 @@ class UnlearningFedAvg(FedAvg):
             return None, {}
 
         filtered_results = []
+        aux_models_classifier_layer_list = []
+        aux_last_layer_start_index = None
+        aux_last_layer_end_index = None
         for client_proxy, fit_res in results:
             print("fit_res.metrics", fit_res.metrics)
 
+            if "mode" in fit_res.metrics and fit_res.metrics["mode"] == "fedau-case":
+                fit_res_parameters_ndarray = parameters_to_ndarrays(fit_res.parameters)
+                aux_last_layer_start_index = fit_res.metrics["aux_last_layer_index"][0]
+                aux_last_layer_end_index = (
+                    fit_res.metrics["aux_last_layer_index"][1] + 1
+                )
+
+                aux_models_classifier_layer_list.append(
+                    fit_res_parameters_ndarray[
+                        aux_last_layer_start_index:aux_last_layer_end_index
+                    ]
+                )
+                fit_res.parameters = ndarrays_to_parameters(
+                    fit_res_parameters_ndarray[:-2]
+                )
+
             filtered_results.append((client_proxy, fit_res))
 
-        parameters_aggregated = ndarrays_to_parameters(
-            aggregate_inplace(filtered_results)
-        )
+        aggregated_ndarrays = aggregate_inplace(filtered_results)
+
+        if aux_models_classifier_layer_list:
+            print("Aggregating aux models")
+            aux_models_classifier_layer_list_len = len(aux_models_classifier_layer_list)
+            aux_model_classifier_layer_aggregated = custom_aggregate(
+                [
+                    (
+                        aux_models_classifier_layer,
+                        1 / aux_models_classifier_layer_list_len,
+                    )
+                    for aux_models_classifier_layer in aux_models_classifier_layer_list
+                ]
+            )
+
+            aggregated_ndarrays[aux_last_layer_start_index:aux_last_layer_end_index] = (
+                custom_aggregate(
+                    [
+                        (
+                            aggregated_ndarrays[
+                                aux_last_layer_start_index:aux_last_layer_end_index
+                            ],
+                            0,
+                        ),
+                        (aux_model_classifier_layer_aggregated, 1),
+                    ]
+                )
+            )
+
+        parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
 
         # Aggregate custom metrics if aggregation fn was provided
         metrics_aggregated = {}

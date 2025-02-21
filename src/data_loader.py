@@ -1,5 +1,6 @@
 import json
 import os
+import random
 
 import numpy as np
 import torch
@@ -97,6 +98,7 @@ def load_client_data(
     is_drift: bool = False,
     abrupt_drift_labels_swap=None,
     client_drift_dataset_indexes_folder_path: str = None,
+    mode: str = None,
 ):
 
     client_data_file_path = os.path.join(client_dataset_folder_path, f"{file_name}.pt")
@@ -157,6 +159,33 @@ def load_client_data(
 
         # Create a new DataLoader using the swapped data
         data_loader = TorchDataLoader(swapped_data, batch_size=batch_size, shuffle=True)
+
+    elif mode == "fedau-case":
+        client_drift_dataset_indexes_file_path = os.path.join(
+            client_drift_dataset_indexes_folder_path, f"{file_name}.json"
+        )
+
+        with open(
+            client_drift_dataset_indexes_file_path, "r", encoding="utf-8"
+        ) as file:
+            client_drift_dataset_indexes_file = set(json.load(file))
+
+        aux_data = []
+        # Loop over each selected index and swap labels if needed
+        for idx in indices:
+            # Get the sample (assumed to be in the format (image, label))
+            image = dataset[int(idx)]["image"]
+
+            if int(idx) in client_drift_dataset_indexes_file:
+                label = random.randint(0, 9)
+            else:
+                label = dataset[int(idx)]["label"]
+
+            aux_data.append({"image": image, "label": label})
+
+        # Create a DataLoader over the subset
+        data_loader = TorchDataLoader(aux_data, batch_size=batch_size, shuffle=True)
+
     else:
         subset = Subset(dataset, indices)
         # Create a DataLoader over the subset
