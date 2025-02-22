@@ -224,7 +224,11 @@ class FlowerClient(NumPyClient):
             ]
 
             results.update(
-                {"mode": self.mode, "aux_last_layer_index": aux_last_layer_index}
+                {
+                    "mode": self.mode,
+                    "aux_last_layer_weights_index": aux_last_layer_index[0],
+                    "aux_last_layer_bias_index": aux_last_layer_index[1],
+                }
             )
 
             weights = get_weights(self.net)

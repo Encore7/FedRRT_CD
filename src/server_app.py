@@ -110,23 +110,20 @@ class UnlearningFedAvg(FedAvg):
 
         filtered_results = []
         aux_models_classifier_layer_list = []
-        aux_last_layer_start_index = None
-        aux_last_layer_end_index = None
+        aux_last_layer_weights_index = None
+        aux_last_layer_bias_index = None
         for client_proxy, fit_res in results:
             print("fit_res.metrics", fit_res.metrics)
 
             if "mode" in fit_res.metrics and fit_res.metrics["mode"] == "fedau-case":
+                print("Aggregating aux models fit")
                 fit_res_parameters_ndarray = parameters_to_ndarrays(fit_res.parameters)
-                aux_last_layer_start_index = fit_res.metrics["aux_last_layer_index"][0]
-                aux_last_layer_end_index = (
-                    fit_res.metrics["aux_last_layer_index"][1] + 1
-                )
+                aux_last_layer_weights_index = fit_res.metrics[
+                    "aux_last_layer_weights_index"
+                ]
+                aux_last_layer_bias_index = fit_res.metrics["aux_last_layer_bias_index"]
 
-                aux_models_classifier_layer_list.append(
-                    fit_res_parameters_ndarray[
-                        aux_last_layer_start_index:aux_last_layer_end_index
-                    ]
-                )
+                aux_models_classifier_layer_list.append(fit_res_parameters_ndarray[-2:])
                 fit_res.parameters = ndarrays_to_parameters(
                     fit_res_parameters_ndarray[:-2]
                 )
@@ -148,18 +145,18 @@ class UnlearningFedAvg(FedAvg):
                 ]
             )
 
-            aggregated_ndarrays[aux_last_layer_start_index:aux_last_layer_end_index] = (
-                custom_aggregate(
-                    [
-                        (
-                            aggregated_ndarrays[
-                                aux_last_layer_start_index:aux_last_layer_end_index
-                            ],
-                            0,
-                        ),
-                        (aux_model_classifier_layer_aggregated, 1),
-                    ]
-                )
+            aggregated_ndarrays[
+                aux_last_layer_weights_index : aux_last_layer_bias_index + 1
+            ] = custom_aggregate(
+                [
+                    (
+                        aggregated_ndarrays[
+                            aux_last_layer_weights_index : aux_last_layer_bias_index + 1
+                        ],
+                        0.9,
+                    ),
+                    (aux_model_classifier_layer_aggregated, 0.1),
+                ]
             )
 
         parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)

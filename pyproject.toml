@@ -28,7 +28,7 @@ learning-rate = 0.005
 batch-size = 128
 dataset-name = "mnist"
 data-loader-alpha = 0.9
-prepare-dataset = true
+prepare-dataset = false
 dataset-folder-path = "src/data/clients_dataset"
 
 # Drift configuration
