@@ -214,6 +214,7 @@ class FlowerClient(NumPyClient):
                 self.local_epochs,
                 self.lr,
                 self.device,
+                0.9,
             )
 
             aux_last_layer_index = []
