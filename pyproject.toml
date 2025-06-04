@@ -26,9 +26,10 @@ fraction-evaluate = 1
 local-epochs = 3
 learning-rate = 0.005
 batch-size = 128
-dataset-name = "mnist"
+# options: fashion_mnist, mnist
+dataset-name = "fashion_mnist"
 data-loader-alpha = 0.9
-prepare-dataset = false
+prepare-dataset = true
 dataset-folder-path = "src/data/clients_dataset"
 
 # Drift configuration

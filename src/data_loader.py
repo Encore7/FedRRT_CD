@@ -14,7 +14,7 @@ from torchvision import transforms
 class DataLoader:
     def __init__(self, dataset_name: str):
         self.dataset_name = dataset_name
-        if self.dataset_name == "mnist":
+        if self.dataset_name == "mnist" or self.dataset_name == "fashion_mnist":
             self.pytorch_transforms = transforms.Compose(
                 [
                     transforms.ToTensor(),
@@ -37,7 +37,7 @@ class DataLoader:
             alpha (float): Dirichlet parameter controlling the degree of heterogeneity.
             split (str): Which split to load ("train" or "test").
         """
-        if self.dataset_name == "mnist":
+        if self.dataset_name == "mnist" or self.dataset_name == "fashion_mnist":
             partition_by = "label"
         else:
             raise ValueError("Unknown dataset")
