@@ -160,7 +160,7 @@ def load_client_data(
         # Create a new DataLoader using the swapped data
         data_loader = TorchDataLoader(swapped_data, batch_size=batch_size, shuffle=True)
 
-    elif mode == "fedau-case":
+    elif mode == "fedau-case" or mode == "fluid-case":
         client_drift_dataset_indexes_file_path = os.path.join(
             client_drift_dataset_indexes_folder_path, f"{file_name}.json"
         )

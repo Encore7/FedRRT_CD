@@ -115,7 +115,10 @@ class UnlearningFedAvg(FedAvg):
         for client_proxy, fit_res in results:
             print("fit_res.metrics", fit_res.metrics)
 
-            if "mode" in fit_res.metrics and fit_res.metrics["mode"] == "fedau-case":
+            if "mode" in fit_res.metrics and (
+                fit_res.metrics["mode"] == "fedau-case"
+                or fit_res.metrics["mode"] == "fluid-case"
+            ):
                 print("Aggregating aux models fit")
                 fit_res_parameters_ndarray = parameters_to_ndarrays(fit_res.parameters)
                 aux_last_layer_weights_index = fit_res.metrics[

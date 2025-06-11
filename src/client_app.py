@@ -85,6 +85,7 @@ class FlowerClient(NumPyClient):
                 self.mode == "retraining-case"
                 or self.mode == "rapid-retraining-case"
                 or self.mode == "fedau-case"
+                or self.mode == "fluid-case"
             ):
                 remove_client_drifted_dataset(
                     self.client_dataset_folder_path,
@@ -109,6 +110,7 @@ class FlowerClient(NumPyClient):
                 self.mode == "retraining-case"
                 or self.mode == "rapid-retraining-case"
                 or self.mode == "fedau-case"
+                or self.mode == "fluid-case"
             ):
                 client_dataset_folder_path = self.client_remaining_dataset_folder_path
             elif self.mode == "drift-case":
@@ -154,6 +156,7 @@ class FlowerClient(NumPyClient):
 
         if (
             self.mode == "rapid-retraining-case"
+            or self.mode == "fluid-case"
             and current_round >= self.drift_end_round
         ):
             train_results = rapid_train(
@@ -184,7 +187,7 @@ class FlowerClient(NumPyClient):
         # Training aux model for the federated AU case
 
         if (
-            self.mode == "fedau-case"
+            (self.mode == "fedau-case" or self.mode == "fluid-case")
             and self.client_number in self.drift_clients
             and (self.drift_start_round <= current_round < self.drift_end_round)
         ):

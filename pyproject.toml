@@ -41,8 +41,8 @@ drift-dataset-indexes-folder-path = "src/data/clients_drift_dataset_indexes"
 remaining-dataset-folder-path = "src/data/clients_remaining_dataset"
 drifted-dataset-folder-path = "src/data/clients_drifted_dataset"
 
-# unlearning settings: drift-case, retraining-case, rapid-retraining-case, fedau-case
-mode = "fedau-case"
+# unlearning settings: drift-case, retraining-case, rapid-retraining-case, fedau-case, fluid-case
+mode = "fluid-case"
 
 [tool.flwr.federations]
 default = "local-simulation"
