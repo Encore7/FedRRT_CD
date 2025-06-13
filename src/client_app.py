@@ -166,6 +166,20 @@ class FlowerClient(NumPyClient):
                 self.device,
                 self.batch_size,
             )
+        # elif (
+        #     (self.mode == "fedau-case" or self.mode == "fluid-case")
+        #     and self.client_number in self.drift_clients
+        #     and (self.drift_start_round <= current_round < self.drift_end_round)
+        # ):
+        #     train_results = train(
+        #         self.net,
+        #         train_batches,
+        #         val_batches,
+        #         self.local_epochs,
+        #         self.lr,
+        #         self.device,
+        #         0.9,
+        #     )
         else:
             train_results = train(
                 self.net,
