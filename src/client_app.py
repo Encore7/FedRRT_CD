@@ -155,10 +155,8 @@ class FlowerClient(NumPyClient):
         set_weights(self.net, parameters)
 
         if (
-            self.mode == "rapid-retraining-case"
-            or self.mode == "fluid-case"
-            and current_round >= self.drift_end_round
-        ):
+            self.mode == "rapid-retraining-case" or self.mode == "fluid-case"
+        ) and current_round >= self.drift_end_round:
             train_results = rapid_train(
                 self.net,
                 train_batches,
