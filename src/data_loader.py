@@ -145,6 +145,11 @@ def load_client_data(
                 client_drift_dataset_indexes_folder_path, f"{file_name}.json"
             )
             # Save the drift indexes to file
+            if file_name == "val_data":
+                drift_dataset_indexes = random.sample(
+                    drift_dataset_indexes, max(1, int(len(drift_dataset_indexes) * 0.1))
+                )
+
             if os.path.exists(client_drift_dataset_indexes_file_path):
                 with open(
                     client_drift_dataset_indexes_file_path, "r", encoding="utf-8"
