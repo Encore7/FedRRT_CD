@@ -173,5 +173,6 @@ cython_debug/
 data/
 
 plots/
+plots_mnist/
 
 .DS_Store
