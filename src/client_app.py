@@ -177,6 +177,7 @@ class FlowerClient(NumPyClient):
             )
 
         results.update(train_results)
+        results.update({"client_number": self.client_number})
 
         self.logger.info("results %s", results)
         self.logger.info("dataset_length %s", len(train_batches.dataset))

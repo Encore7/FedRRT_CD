@@ -115,6 +115,22 @@ class UnlearningFedAvg(FedAvg):
         for client_proxy, fit_res in results:
             print("fit_res.metrics", fit_res.metrics)
 
+            client_number = fit_res.metrics["client_number"]
+
+            if client_number not in self.client_plot:
+                self.client_plot[client_number] = {
+                    "global_accuracy": [],
+                    "global_loss": [],
+                    "local_accuracy": [],
+                    "local_loss": [],
+                }
+            self.client_plot[client_number]["local_accuracy"].append(
+                fit_res.metrics["val_accuracy"]
+            )
+            self.client_plot[client_number]["local_loss"].append(
+                fit_res.metrics["val_loss"]
+            )
+
             if "mode" in fit_res.metrics and (
                 fit_res.metrics["mode"] == "fedau-case"
                 or fit_res.metrics["mode"] == "fluid-case"
@@ -175,12 +191,9 @@ class UnlearningFedAvg(FedAvg):
             accuracy = eval_res.metrics["accuracy"]
             loss = eval_res.loss
 
-            if client_number not in self.client_plot:
-                self.client_plot[client_number] = {"accuracy": [], "loss": []}
-
             # Append accuracy and loss
-            self.client_plot[client_number]["accuracy"].append(accuracy)
-            self.client_plot[client_number]["loss"].append(loss)
+            self.client_plot[client_number]["global_accuracy"].append(accuracy)
+            self.client_plot[client_number]["global_loss"].append(loss)
 
         if server_round == self.num_server_rounds:
             with open(
