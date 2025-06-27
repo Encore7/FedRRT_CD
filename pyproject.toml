@@ -27,14 +27,15 @@ local-epochs = 3
 learning-rate = 0.005
 batch-size = 128
 # options: fashion_mnist, mnist
-dataset-name = "fashion_mnist"
+dataset-name = "minst"
 data-loader-alpha = 0.9
 prepare-dataset = false
 dataset-folder-path = "src/data/clients_dataset"
 
 # Drift configuration
-drift-start-round = 50
-drift-end-round = 75
+drift-start-round = 20
+incremental-drift-rounds = '{"20": 0.2, "40": 0.4, "60": 0.6, "80": 0.8}'
+drift-end-round = 80
 drift-clients = "[1,5,7]"
 # abrupt-drift-labels-swap = '[{"label1": 1, "label2": 2},{"label1": 5, "label2": 7}]'
 abrupt-drift-labels-swap = '[{"label1": 0, "label2": 2},{"label1": 5, "label2": 7}]'
@@ -43,7 +44,7 @@ remaining-dataset-folder-path = "src/data/clients_remaining_dataset"
 drifted-dataset-folder-path = "src/data/clients_drifted_dataset"
 
 # unlearning settings: drift-case, retraining-case, rapid-retraining-case, fedau-case, fluid-case
-mode = "rapid-retraining-case"
+mode = "drift-case"
 
 [tool.flwr.federations]
 default = "local-simulation"

@@ -35,6 +35,7 @@ class FlowerClient(NumPyClient):
         drifted_dataset_folder_path,
         dataset_folder_path,
         mode,
+        incremental_drift_rounds,
     ):
         super().__init__()
         self.net = Net()
@@ -60,6 +61,7 @@ class FlowerClient(NumPyClient):
             dataset_folder_path, f"client_{client_number}"
         )
         self.mode = mode
+        self.incremental_drift_rounds = incremental_drift_rounds
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         # Configure logging
@@ -132,21 +134,25 @@ class FlowerClient(NumPyClient):
         results = {}
 
         train_batches = load_client_data(
+            current_round,
             "train_data",
             self.num_batches_each_round,
             self.batch_size,
             client_dataset_folder_path,
             True,
+            self.incremental_drift_rounds,
             is_drift,
             self.abrupt_drift_labels_swap,
             self.client_drift_dataset_indexes_folder_path,
         )
         val_batches = load_client_data(
+            current_round,
             "val_data",
             self.num_batches_each_round,
             self.batch_size,
             client_dataset_folder_path,
             True,
+            self.incremental_drift_rounds,
             is_drift,
             self.abrupt_drift_labels_swap,
             self.client_drift_dataset_indexes_folder_path,
@@ -198,11 +204,13 @@ class FlowerClient(NumPyClient):
             )
 
             aux_train_batches = load_client_data(
+                current_round,
                 "train_data",
                 self.num_batches_each_round,
                 self.batch_size,
                 client_dataset_folder_path,
                 False,
+                self.incremental_drift_rounds,
                 False,
                 self.abrupt_drift_labels_swap,
                 self.client_drift_dataset_indexes_folder_path,
@@ -250,15 +258,19 @@ class FlowerClient(NumPyClient):
             results,
         )
 
-    def _evaluate_model(self, parameters, is_drift, client_dataset_folder_path):
+    def _evaluate_model(
+        self, parameters, is_drift, client_dataset_folder_path, current_round
+    ):
         set_weights(self.net, parameters)
 
         val_batches = load_client_data(
+            current_round,
             "val_data",
             self.num_batches_each_round,
             self.batch_size,
             client_dataset_folder_path,
             False,
+            self.incremental_drift_rounds,
             is_drift,
             self.abrupt_drift_labels_swap,
             self.client_drift_dataset_indexes_folder_path,
@@ -286,6 +298,7 @@ class FlowerClient(NumPyClient):
             parameters,
             is_drift,
             client_dataset_folder_path,
+            current_round,
         )
 
         return (
@@ -319,6 +332,9 @@ def client_fn(context: Context):
     drifted_dataset_folder_path = context.run_config["drifted-dataset-folder-path"]
     dataset_folder_path = context.run_config["dataset-folder-path"]
     mode = context.run_config["mode"]
+    incremental_drift_rounds = json.loads(
+        context.run_config["incremental-drift-rounds"]
+    )
 
     # Return Client instance
     return FlowerClient(
@@ -336,6 +352,7 @@ def client_fn(context: Context):
         drifted_dataset_folder_path,
         dataset_folder_path,
         mode,
+        incremental_drift_rounds,
     ).to_client()
 
 
