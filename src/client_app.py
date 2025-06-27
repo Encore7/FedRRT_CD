@@ -72,6 +72,15 @@ class FlowerClient(NumPyClient):
     def _get_dataset_folder_path(self, current_round):
         is_drift = False
         client_dataset_folder_path = self.client_dataset_folder_path
+        percentage_to_swap = 1.0
+
+        if self.incremental_drift_rounds and current_round <= self.drift_end_round:
+            keys = sorted(map(int, self.incremental_drift_rounds.keys()))
+            for i in range(len(keys) - 1):
+                if keys[i] <= current_round < keys[i + 1]:
+                    percentage_to_swap = self.incremental_drift_rounds[str(keys[i])]
+            if current_round >= keys[-1]:  # Handle the last range
+                percentage_to_swap = self.incremental_drift_rounds[str(keys[-1])]
 
         if self.drift_start_round <= current_round < self.drift_end_round:
             if self.client_number in self.drift_clients:
@@ -118,14 +127,14 @@ class FlowerClient(NumPyClient):
             elif self.mode == "drift-case":
                 client_dataset_folder_path = self.client_drifted_dataset_folder_path
 
-        return client_dataset_folder_path, is_drift
+        return client_dataset_folder_path, is_drift, percentage_to_swap
 
     def fit(self, parameters, config):
         # Fetching configuration settings from the server for the fit operation (server.configure_fit)
         current_round = config.get("current_round", 0)
 
-        client_dataset_folder_path, is_drift = self._get_dataset_folder_path(
-            current_round
+        client_dataset_folder_path, is_drift, percentage_to_swap = (
+            self._get_dataset_folder_path(current_round)
         )
 
         self.logger.info("config: %s", config)
@@ -134,25 +143,23 @@ class FlowerClient(NumPyClient):
         results = {}
 
         train_batches = load_client_data(
-            current_round,
             "train_data",
             self.num_batches_each_round,
             self.batch_size,
             client_dataset_folder_path,
             True,
-            self.incremental_drift_rounds,
+            percentage_to_swap,
             is_drift,
             self.abrupt_drift_labels_swap,
             self.client_drift_dataset_indexes_folder_path,
         )
         val_batches = load_client_data(
-            current_round,
             "val_data",
             self.num_batches_each_round,
             self.batch_size,
             client_dataset_folder_path,
             True,
-            self.incremental_drift_rounds,
+            percentage_to_swap,
             is_drift,
             self.abrupt_drift_labels_swap,
             self.client_drift_dataset_indexes_folder_path,
@@ -204,13 +211,12 @@ class FlowerClient(NumPyClient):
             )
 
             aux_train_batches = load_client_data(
-                current_round,
                 "train_data",
                 self.num_batches_each_round,
                 self.batch_size,
                 client_dataset_folder_path,
                 False,
-                self.incremental_drift_rounds,
+                percentage_to_swap,
                 False,
                 self.abrupt_drift_labels_swap,
                 self.client_drift_dataset_indexes_folder_path,
@@ -259,18 +265,17 @@ class FlowerClient(NumPyClient):
         )
 
     def _evaluate_model(
-        self, parameters, is_drift, client_dataset_folder_path, current_round
+        self, parameters, is_drift, client_dataset_folder_path, percentage_to_swap
     ):
         set_weights(self.net, parameters)
 
         val_batches = load_client_data(
-            current_round,
             "val_data",
             self.num_batches_each_round,
             self.batch_size,
             client_dataset_folder_path,
             False,
-            self.incremental_drift_rounds,
+            percentage_to_swap,
             is_drift,
             self.abrupt_drift_labels_swap,
             self.client_drift_dataset_indexes_folder_path,
@@ -290,15 +295,15 @@ class FlowerClient(NumPyClient):
 
         current_round = config.get("current_round", 0)
 
-        client_dataset_folder_path, is_drift = self._get_dataset_folder_path(
-            current_round
+        client_dataset_folder_path, is_drift, percentage_to_swap = (
+            self._get_dataset_folder_path(current_round)
         )
 
         loss, accuracy, val_dataset_length = self._evaluate_model(
             parameters,
             is_drift,
             client_dataset_folder_path,
-            current_round,
+            percentage_to_swap,
         )
 
         return (
