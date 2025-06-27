@@ -195,9 +195,9 @@ class UnlearningFedAvg(FedAvg):
                         aggregated_ndarrays[
                             aux_last_layer_weights_index : aux_last_layer_bias_index + 1
                         ],
-                        1.05,
+                        0.9,
                     ),
-                    (aux_model_classifier_layer_aggregated, -0.05),
+                    (aux_model_classifier_layer_aggregated, 0.1),
                 ]
             )
 
