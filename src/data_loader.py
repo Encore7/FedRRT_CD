@@ -90,27 +90,51 @@ class DataLoader:
 
 
 def load_client_data(
+    current_round: int,
     file_name: str,
     num_batches_each_round: int,
     batch_size: int,
     client_dataset_folder_path: str,
     save_swapped_labels: bool,
+    incremental_drift_rounds: str,
     is_drift: bool = False,
     abrupt_drift_labels_swap=None,
     client_drift_dataset_indexes_folder_path: str = None,
     mode: str = None,
 ):
+    percentage_to_swap = 1.0
+    if incremental_drift_rounds:
+        keys = sorted(map(int, incremental_drift_rounds.keys()))
+        for i in range(len(keys) - 1):
+            if keys[i] <= current_round < keys[i + 1]:
+                percentage_to_swap = incremental_drift_rounds[str(keys[i])]
+        if current_round >= keys[-1]:  # Handle the last range
+            percentage_to_swap = incremental_drift_rounds[str(keys[-1])]
 
     client_data_file_path = os.path.join(client_dataset_folder_path, f"{file_name}.pt")
 
     dataset = torch.load(client_data_file_path, weights_only=False)
+    if mode == "rapid-retraining-case" and is_drift:
+        filtered_data = []
+        for item in dataset:
+            for rule in abrupt_drift_labels_swap:
+                if (
+                    item["label"] == rule["label1"] or item["label"] == rule["label2"]
+                ) and random.random() < percentage_to_swap:
+                    filtered_data.append(item)
+                else:
+                    filtered_data.append(item)
+        dataset = filtered_data
+        is_drift = False
+
     dataset_length = len(dataset)
     total_samples = num_batches_each_round * batch_size
 
     if dataset_length < total_samples:
-        raise ValueError(
-            f"Dataset size ({dataset_length}) is smaller than the requested number of samples ({total_samples})."
-        )
+        # raise ValueError(
+        #     f"Dataset size ({dataset_length}) is smaller than the requested number of samples ({total_samples})."
+        # )
+        total_samples = dataset_length
 
     # Randomly select indices without replacement
     indices = np.random.choice(dataset_length, total_samples, replace=False)
@@ -127,12 +151,13 @@ def load_client_data(
 
             # Check each swap rule
             for rule in abrupt_drift_labels_swap:
-                if label == rule["label1"]:
-                    label = rule["label2"]
-                    drift_dataset_indexes.append(int(idx))
-                elif label == rule["label2"]:
-                    label = rule["label1"]
-                    drift_dataset_indexes.append(int(idx))
+                if random.random() < percentage_to_swap:
+                    if label == rule["label1"]:
+                        label = rule["label2"]
+                        drift_dataset_indexes.append(int(idx))
+                    elif label == rule["label2"]:
+                        label = rule["label1"]
+                        drift_dataset_indexes.append(int(idx))
             # Append the (possibly modified) sample to our swapped data list
             swapped_data.append({"image": image, "label": label})
 

@@ -54,13 +54,23 @@ def custom_aggregate(results: list[tuple[NDArrays, float]]) -> NDArrays:
 
 
 class UnlearningFedAvg(FedAvg):
-    def __init__(self, num_of_clients, num_server_rounds, mode, **kwargs):
+    def __init__(
+        self,
+        num_of_clients,
+        num_server_rounds,
+        mode,
+        drift_start_round,
+        incremental_drift_rounds,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
 
         self.num_of_clients = num_of_clients
         self.client_plot = {}
         self.num_server_rounds = num_server_rounds
         self.mode = mode
+        self.drift_start_round = drift_start_round
+        self.incremental_drift_rounds = incremental_drift_rounds
 
     def configure_fit(self, server_round, parameters, client_manager):
         # Waiting till all clients are connected
@@ -107,6 +117,19 @@ class UnlearningFedAvg(FedAvg):
         # Do not aggregate if there are failures and failures are not accepted
         if not self.accept_failures and failures:
             return None, {}
+
+        # Aggregate custom metrics if aggregation fn was provided
+        metrics_aggregated = {}
+
+        if (
+            (
+                self.incremental_drift_rounds
+                and server_round in map(int, self.incremental_drift_rounds.keys())
+            )
+            or server_round == self.drift_start_round
+        ) and (self.mode == "retraining-case" or self.mode == "rapid-retraining-case"):
+            re_init_parameters = get_weights(Net())
+            return ndarrays_to_parameters(re_init_parameters), metrics_aggregated
 
         filtered_results = []
         aux_models_classifier_layer_list = []
@@ -172,16 +195,13 @@ class UnlearningFedAvg(FedAvg):
                         aggregated_ndarrays[
                             aux_last_layer_weights_index : aux_last_layer_bias_index + 1
                         ],
-                        0.9,
+                        1.05,
                     ),
-                    (aux_model_classifier_layer_aggregated, 0.1),
+                    (aux_model_classifier_layer_aggregated, -0.05),
                 ]
             )
 
         parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
-
-        # Aggregate custom metrics if aggregation fn was provided
-        metrics_aggregated = {}
 
         return parameters_aggregated, metrics_aggregated
 
@@ -192,6 +212,13 @@ class UnlearningFedAvg(FedAvg):
             loss = eval_res.loss
 
             # Append accuracy and loss
+            if client_number not in self.client_plot:
+                self.client_plot[client_number] = {
+                    "global_accuracy": [],
+                    "global_loss": [],
+                    "local_accuracy": [],
+                    "local_loss": [],
+                }
             self.client_plot[client_number]["global_accuracy"].append(accuracy)
             self.client_plot[client_number]["global_loss"].append(loss)
 
@@ -220,6 +247,10 @@ def server_fn(context: Context):
         num_of_clients=int(context.run_config["num-of-clients"]),
         num_server_rounds=int(context.run_config["num-server-rounds"]),
         mode=context.run_config["mode"],
+        drift_start_round=int(context.run_config["drift-start-round"]),
+        incremental_drift_rounds=json.loads(
+            context.run_config["incremental-drift-rounds"]
+        ),
     )
     config = ServerConfig(num_rounds=int(context.run_config["num-server-rounds"]))
 

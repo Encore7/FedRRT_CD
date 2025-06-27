@@ -174,5 +174,6 @@ data/
 
 plots/
 plots_mnist/
+plots_fmnist/
 
 .DS_Store
