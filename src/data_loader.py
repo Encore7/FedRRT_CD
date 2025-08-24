@@ -109,9 +109,10 @@ def load_client_data(
     total_samples = num_batches_each_round * batch_size
 
     if dataset_length < total_samples:
-        raise ValueError(
-            f"Dataset size ({dataset_length}) is smaller than the requested number of samples ({total_samples})."
-        )
+        # raise ValueError(
+        #     f"Dataset size ({dataset_length}) is smaller than the requested number of samples ({total_samples})."
+        # )
+        total_samples = dataset_length
 
     # Randomly select indices without replacement
     indices = np.random.choice(dataset_length, total_samples, replace=False)

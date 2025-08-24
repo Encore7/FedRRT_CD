@@ -82,50 +82,30 @@ class FlowerClient(NumPyClient):
             if current_round >= keys[-1]:  # Handle the last range
                 percentage_to_swap = self.incremental_drift_rounds[str(keys[-1])]
 
-        if self.drift_start_round <= current_round < self.drift_end_round:
-            if self.client_number in self.drift_clients:
+        if self.client_number in self.drift_clients:
+            if (self.drift_start_round <= current_round < self.drift_end_round) and (
+                self.mode != "rapid-retraining-case"
+            ):
                 is_drift = True
                 self.logger.info(
                     "Drift initiated by the client: %s", self.client_number
                 )
-        elif (
-            current_round == self.drift_end_round
-            and self.client_number in self.drift_clients
-        ):
-            if (
-                self.mode == "retraining-case"
-                or self.mode == "rapid-retraining-case"
-                or self.mode == "fedau-case"
-                or self.mode == "fluid-case"
-            ):
-                remove_client_drifted_dataset(
-                    self.client_dataset_folder_path,
-                    self.client_drift_dataset_indexes_folder_path,
-                    self.client_remaining_dataset_folder_path,
-                )
-                client_dataset_folder_path = self.client_remaining_dataset_folder_path
-            elif self.mode == "drift-case":
-                add_client_drifted_dataset(
-                    self.client_dataset_folder_path,
-                    self.client_drift_dataset_indexes_folder_path,
-                    self.client_drifted_dataset_folder_path,
-                    self.abrupt_drift_labels_swap,
-                )
-                client_dataset_folder_path = self.client_drifted_dataset_folder_path
+            elif current_round == self.drift_end_round:
+                if self.mode == "fedau-case":
+                    remove_client_drifted_dataset(
+                        self.client_dataset_folder_path,
+                        self.client_drift_dataset_indexes_folder_path,
+                        self.client_remaining_dataset_folder_path,
+                    )
+                    client_dataset_folder_path = (
+                        self.client_remaining_dataset_folder_path
+                    )
 
-        elif (
-            current_round > self.drift_end_round
-            and self.client_number in self.drift_clients
-        ):
-            if (
-                self.mode == "retraining-case"
-                or self.mode == "rapid-retraining-case"
-                or self.mode == "fedau-case"
-                or self.mode == "fluid-case"
-            ):
-                client_dataset_folder_path = self.client_remaining_dataset_folder_path
-            elif self.mode == "drift-case":
-                client_dataset_folder_path = self.client_drifted_dataset_folder_path
+            # elif current_round > self.drift_end_round:
+            #     if self.mode == "fedau-case":
+            #         client_dataset_folder_path = (
+            #             self.client_remaining_dataset_folder_path
+            #         )
 
         return client_dataset_folder_path, is_drift, percentage_to_swap
 
@@ -168,8 +148,9 @@ class FlowerClient(NumPyClient):
         set_weights(self.net, parameters)
 
         if (
-            self.mode == "rapid-retraining-case" or self.mode == "fluid-case"
-        ) and current_round >= self.drift_end_round:
+            self.mode == "rapid-retraining-case"
+            and current_round >= self.drift_start_round
+        ) or (self.mode == "fluid-case" and current_round >= self.drift_end_round):
             train_results = rapid_train(
                 self.net,
                 train_batches,
